@@ -3,6 +3,15 @@ To build:
 go build -o puls -trimpath -ldflags "-s -w"
 ```
 
+To build for linux on mac
+```bash
+docker run --rm \
+  -v "$PWD":/app \
+  -w /app \
+  golang:1.23 \
+  bash -c 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o puls -trimpath -ldflags "-s -w" ./cmd/puls'
+```
+
 To set up context:
 ```bash
 ./puls context set \
