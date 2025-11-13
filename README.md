@@ -13,7 +13,25 @@ To set up context:
   --prefix stand1
 ```
 
+List all topics
+```bash
+./puls list --full
+```
 
+List topics
+```bash
+./puls list
+```
+
+List topics with partitioned
+```bash
+./puls list --with-partitioned
+```
+
+List topics with verbose logs
+```bash
+./puls list --verbose
+```
 
 Delete empty topics
 ```bash
