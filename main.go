@@ -19,6 +19,8 @@ func main() {
 	switch cmd {
 	case "context":
 		err = commands.CmdContext(args)
+	case "list":
+        err = commands.CmdList(args)
 	case "delete-empty-topics":
 		err = commands.CmdDeleteEmptyTopics(args)
 	case "topic-info":

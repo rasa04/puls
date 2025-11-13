@@ -8,12 +8,13 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"sync"
 	"io"
 	"context"
 	pulsarContext "puls/cmd/ctx"
 )
 
-type httpClient struct {
+type HttpClient struct {
 	base string
 	tok  string
 	c    *http.Client
@@ -26,15 +27,22 @@ type TopicRef struct {
 	Name      string
 }
 
-func NewHTTP(ctx *pulsarContext.Context) *httpClient {
-	return &httpClient{
+type TopicBacklog struct {
+    Ref     TopicRef
+    Backlog int64
+    Empty   bool
+    Err     error
+}
+
+func NewHTTP(ctx *pulsarContext.Context) *HttpClient {
+	return &HttpClient{
 		base: strings.TrimRight(ctx.AdminURL, "/"),
 		tok:  ctx.Token,
 		c:    &http.Client{Timeout: time.Duration(ctx.HTTPTimeoutSec) * time.Second},
 	}
 }
 
-func (h *httpClient) req(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+func (h *HttpClient) req(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
@@ -53,7 +61,7 @@ func (h *httpClient) req(ctx context.Context, method, path string, body io.Reade
 
 func ListNonPartitionedTopics(
 	ctx context.Context,
-	h *httpClient,
+	h *HttpClient,
 	tenant, ns string,
 	includeSystem bool,
 ) ([]TopicRef, error) {
@@ -88,7 +96,7 @@ func ListNonPartitionedTopics(
 
 func ListPartitionedTopics(
 	ctx context.Context,
-	h *httpClient,
+	h *HttpClient,
 	tenant, ns string,
 	includeSystem bool,
 ) ([]TopicRef, error) {
@@ -122,7 +130,7 @@ func ListPartitionedTopics(
 }
 
 
-func getNonPartitionedStats(ctx context.Context, h *httpClient, t TopicRef) (map[string]any, error) {
+func getNonPartitionedStats(ctx context.Context, h *HttpClient, t TopicRef) (map[string]any, error) {
 	path := fmt.Sprintf("/persistent/%s/%s/%s/stats",
 		url.PathEscape(t.Tenant),
 		url.PathEscape(t.Namespace),
@@ -144,7 +152,7 @@ func getNonPartitionedStats(ctx context.Context, h *httpClient, t TopicRef) (map
 	return m, nil
 }
 
-func GetPartitionedStats(ctx context.Context, h *httpClient, t TopicRef) (map[string]any, error) {
+func GetPartitionedStats(ctx context.Context, h *HttpClient, t TopicRef) (map[string]any, error) {
 	path := fmt.Sprintf("/persistent/%s/%s/%s/partitioned-stats",
 		url.PathEscape(t.Tenant),
 		url.PathEscape(t.Namespace),
@@ -167,7 +175,7 @@ func GetPartitionedStats(ctx context.Context, h *httpClient, t TopicRef) (map[st
 }
 
 
-func IsEmptyNonPartitioned(ctx context.Context, h *httpClient, t TopicRef) (bool, int64, error) {
+func IsEmptyNonPartitioned(ctx context.Context, h *HttpClient, t TopicRef) (bool, int64, error) {
 	s, err := getNonPartitionedStats(ctx, h, t)
 	if err != nil {
 		return false, 0, err
@@ -176,7 +184,7 @@ func IsEmptyNonPartitioned(ctx context.Context, h *httpClient, t TopicRef) (bool
 	return backlog == 0, backlog, nil
 }
 
-func IsEmptyPartitioned(ctx context.Context, h *httpClient, t TopicRef) (bool, int64, error) {
+func IsEmptyPartitioned(ctx context.Context, h *HttpClient, t TopicRef) (bool, int64, error) {
 	s, err := GetPartitionedStats(ctx, h, t)
 	if err != nil {
 		return false, 0, err
@@ -207,7 +215,7 @@ func IsEmptyPartitioned(ctx context.Context, h *httpClient, t TopicRef) (bool, i
 	return backlog == 0, backlog, nil
 }
 
-func DeleteNonPartitionedTopic(ctx context.Context, h *httpClient, t TopicRef) error {
+func DeleteNonPartitionedTopic(ctx context.Context, h *HttpClient, t TopicRef) error {
 	path := fmt.Sprintf("/persistent/%s/%s/%s",
 		url.PathEscape(t.Tenant),
 		url.PathEscape(t.Namespace),
@@ -225,7 +233,7 @@ func DeleteNonPartitionedTopic(ctx context.Context, h *httpClient, t TopicRef) e
 	return nil
 }
 
-func DeletePartitionedTopic(ctx context.Context, h *httpClient, t TopicRef) error {
+func DeletePartitionedTopic(ctx context.Context, h *HttpClient, t TopicRef) error {
 	path := fmt.Sprintf("/persistent/%s/%s/%s/partitions",
 		url.PathEscape(t.Tenant),
 		url.PathEscape(t.Namespace),
@@ -254,6 +262,118 @@ func FilterTopicsByPrefix(topics []TopicRef, prefix string) []TopicRef {
 		}
 	}
 	return out
+}
+
+func FetchNonPartitionedBacklogsParallel(
+    ctx context.Context,
+    h *HttpClient,
+    topics []TopicRef,
+    parallel int,
+) []TopicBacklog {
+    if parallel <= 0 {
+        parallel = 8 // разумный дефолт
+    }
+    if parallel > len(topics) {
+        parallel = len(topics)
+    }
+    jobs := make(chan TopicRef)
+    results := make(chan TopicBacklog)
+
+    var wg sync.WaitGroup
+    wg.Add(parallel)
+
+    for i := 0; i < parallel; i++ {
+        go func() {
+            defer wg.Done()
+            for t := range jobs {
+                empty, backlog, err := IsEmptyNonPartitioned(ctx, h, t)
+                results <- TopicBacklog{
+                    Ref:     t,
+                    Backlog: backlog,
+                    Empty:   empty,
+                    Err:     err,
+                }
+            }
+        }()
+    }
+
+    go func() {
+        wg.Wait()
+        close(results)
+    }()
+
+    go func() {
+        defer close(jobs)
+        for _, t := range topics {
+            select {
+            case <-ctx.Done():
+                return
+            case jobs <- t:
+            }
+        }
+    }()
+
+    out := make([]TopicBacklog, 0, len(topics))
+    for r := range results {
+        out = append(out, r)
+    }
+    return out
+}
+
+func FetchPartitionedBacklogsParallel(
+    ctx context.Context,
+    h *HttpClient,
+    topics []TopicRef,
+    parallel int,
+) []TopicBacklog {
+    if parallel <= 0 {
+        parallel = 8
+    }
+    if parallel > len(topics) {
+        parallel = len(topics)
+    }
+    jobs := make(chan TopicRef)
+    results := make(chan TopicBacklog)
+
+    var wg sync.WaitGroup
+    wg.Add(parallel)
+
+    for i := 0; i < parallel; i++ {
+        go func() {
+            defer wg.Done()
+            for t := range jobs {
+                empty, backlog, err := IsEmptyPartitioned(ctx, h, t)
+                results <- TopicBacklog{
+                    Ref:     t,
+                    Backlog: backlog,
+                    Empty:   empty,
+                    Err:     err,
+                }
+            }
+        }()
+    }
+
+    go func() {
+        wg.Wait()
+        close(results)
+    }()
+
+    go func() {
+        defer close(jobs)
+        for _, t := range topics {
+            select {
+            case <-ctx.Done():
+                return
+            case jobs <- t:
+            }
+        }
+    }()
+
+    out := make([]TopicBacklog, 0, len(topics))
+    for r := range results {
+        out = append(out, r)
+    }
+    return out
 }
 
 // helpers

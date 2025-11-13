@@ -83,7 +83,7 @@ func MustContext(cfg *Config, nameOpt string) (*ctx.Context, error) {
 		)
 	}
 	if ctx.HTTPTimeoutSec <= 0 {
-		ctx.HTTPTimeoutSec = 10
+		ctx.HTTPTimeoutSec = 20
 	}
 	return ctx, nil
 }
