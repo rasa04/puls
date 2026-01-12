@@ -11,20 +11,17 @@ import (
 	"sync"
 	"io"
 	"context"
+
 	pulsarContext "puls/cmd/ctx"
 )
 
 type HttpClient struct {
-	base string
-	tok  string
-	c    *http.Client
+	base, tok string
+	c *http.Client
 }
 
 type TopicRef struct {
-	FullName  string
-	Tenant    string
-	Namespace string
-	Name      string
+	FullName, Tenant, Namespace, Name string
 }
 
 type TopicBacklog struct {
@@ -129,8 +126,7 @@ func ListPartitionedTopics(
 	return res, nil
 }
 
-
-func getNonPartitionedStats(ctx context.Context, h *HttpClient, t TopicRef) (map[string]any, error) {
+func GetNonPartitionedStats(ctx context.Context, h *HttpClient, t TopicRef) (map[string]any, error) {
 	path := fmt.Sprintf("/persistent/%s/%s/%s/stats",
 		url.PathEscape(t.Tenant),
 		url.PathEscape(t.Namespace),
@@ -174,9 +170,8 @@ func GetPartitionedStats(ctx context.Context, h *HttpClient, t TopicRef) (map[st
 	return m, nil
 }
 
-
 func IsEmptyNonPartitioned(ctx context.Context, h *HttpClient, t TopicRef) (bool, int64, error) {
-	s, err := getNonPartitionedStats(ctx, h, t)
+	s, err := GetNonPartitionedStats(ctx, h, t)
 	if err != nil {
 		return false, 0, err
 	}
