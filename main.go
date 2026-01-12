@@ -32,8 +32,9 @@ func main() {
 		fmt.Println("commands:")
 		fmt.Println("  context             manage contexts (use/current/set/get/list/delete)")
 		fmt.Println("  list                list topics (you can also specify the flags: --full, --with-partitioned, --verbose)")
-		fmt.Println("  delete-empty-topics delete topics with zero backlog")
 		fmt.Println("  show                show backlog and kind for a topic")
+		fmt.Println("  delete              delete topic(s)")
+		fmt.Println("  delete-empty-topics delete topics with zero backlog")
 		return
 	default:
 		err = fmt.Errorf("unknown command: %s", cmd)
