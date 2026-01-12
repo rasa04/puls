@@ -39,6 +39,21 @@ Show full info about certain topic
 ./puls show topic
 ```
 
+Unsubscribe (delete subscription)
+```bash
+# Unsubscribe from non-partitioned topic:
+./puls unsubscribe topic my-sub
+
+# Unsubscribe by full name:
+./puls unsubscribe persistent://tenant/ns/topic my-sub
+
+# If there are active consumers and you want to force disconnect (if supported by cluster):
+./puls unsubscribe topic my-sub --force
+
+# Override tenant/namespace from context:
+./puls unsubscribe --tenant project --namespace dev topic my-sub
+```
+
 Delete topic(s)
 ```bash
 # Dry-run (recommended first):

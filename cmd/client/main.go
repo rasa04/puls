@@ -371,6 +371,42 @@ func FetchPartitionedBacklogsParallel(
     return out
 }
 
+// DeleteSubscription удаляет durable subscription у topic.
+// force=true: пытается закрыть активных consumers и удалить подписку "forcefully" (если кластер поддерживает).
+// :contentReference[oaicite:1]{index=1}
+func DeleteSubscription(ctx context.Context, h *HttpClient, t TopicRef, sub string, force bool) error {
+	q := ""
+	if force {
+		q = "?force=true"
+	}
+
+	path := fmt.Sprintf(
+		"/persistent/%s/%s/%s/subscription/%s%s",
+		url.PathEscape(t.Tenant),
+		url.PathEscape(t.Namespace),
+		url.PathEscape(t.Name),
+		url.PathEscape(sub),
+		q,
+	)
+
+	resp, err := h.req(ctx, "DELETE", path, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 204 {
+		return nil
+	}
+
+	if resp.StatusCode == 404 {
+		return nil
+	}
+
+	b, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("delete subscription %s sub=%s: %s (%s)", t.FullName, sub, resp.Status, string(b))
+}
+
 // helpers
 
 func parseFullTopicName(full string) (TopicRef, error) {

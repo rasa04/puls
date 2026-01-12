@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 
 	pulsarClient "puls/cmd/client"
 )
@@ -24,15 +23,6 @@ type partInfo struct {
 	Backlog int64
 	RateIn  float64
 	RateOut float64
-}
-
-// shared (можно переиспользовать и в delete.go)
-func IsNotFoundErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "404") || strings.Contains(s, "not found")
 }
 
 func PrettyJSON(m map[string]any) string {

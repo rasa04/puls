@@ -5,11 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
-	pulsarClient "puls/cmd/client"
-	pulsarConfig "puls/cmd/config"
+	pulsarClient  "puls/cmd/client"
+	pulsarConfig  "puls/cmd/config"
 	pulsarContext "puls/cmd/ctx"
+	utils         "puls/cmd/utils"
 )
 
 func CmdDelete(args []string) error {
@@ -31,16 +31,9 @@ func CmdDelete(args []string) error {
 		return fmt.Errorf("usage: puls delete [flags] <topic> [<topic>...]")
 	}
 
-	kind = strings.TrimSpace(strings.ToLower(kind))
-	switch kind {
-	case "auto", "partitioned", "non-partitioned", "nonpartitioned", "non_part", "nonpart":
-		// ok
-	default:
-		return fmt.Errorf("invalid --kind=%q (expected auto|partitioned|non-partitioned)", kind)
-	}
-	// нормализуем алиасы
-	if kind == "nonpartitioned" || kind == "non_part" || kind == "nonpart" {
-		kind = "non-partitioned"
+	kind, err := utils.NormalizeKind(kind)
+	if err != nil {
+		return fmt.Errorf(err.Error())
 	}
 
 	cfg, err := pulsarConfig.LoadConfig()
@@ -146,18 +139,8 @@ func isPartitionedAuto(ctx context.Context, h *pulsarClient.HttpClient, t pulsar
 	if err == nil {
 		return true, nil
 	}
-	if isNotFoundErr(err) {
+	if utils.IsNotFoundErr(err) {
 		return false, nil
 	}
 	return false, err
-}
-
-// грубый, но практичный детектор 404 для текущего формата ошибок в client
-func isNotFoundErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	// resp.Status обычно "404 Not Found"
-	return strings.Contains(s, "404") || strings.Contains(strings.ToLower(s), "not found")
 }

@@ -6,11 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
-
+    
 	pulsarClient "puls/cmd/client"
 	pulsarConfig "puls/cmd/config"
-	"puls/cmd/utils"
+	utils        "puls/cmd/utils"
 )
 
 func CmdShow(args []string) error {
@@ -40,9 +39,9 @@ func CmdShow(args []string) error {
         return errors.New("usage: puls show [flags] <topic>\n  topic can be 'name' or 'persistent://tenant/ns/name'")
 	}
 
-	kind = normalizeKind(kind)
-	if kind == "" {
-		return fmt.Errorf("invalid --kind (expected auto|partitioned|non-partitioned)")
+	kind, err := utils.NormalizeKind(kind)
+	if err != nil {
+		return fmt.Errorf(err.Error())
 	}
 
 	cfg, err := pulsarConfig.LoadConfig()
@@ -95,20 +94,6 @@ func CmdShow(args []string) error {
 	return nil
 }
 
-func normalizeKind(s string) string {
-	s = strings.TrimSpace(strings.ToLower(s))
-	switch s {
-	case "auto":
-		return "auto"
-	case "partitioned", "part":
-		return "partitioned"
-	case "non-partitioned", "nonpartitioned", "non_part", "nonpart", "non":
-		return "non-partitioned"
-	default:
-		return ""
-	}
-}
-
 func fetchStatsByKind(
 	ctx context.Context,
 	h *pulsarClient.HttpClient,
@@ -132,7 +117,7 @@ func fetchStatsByKind(
 		//  - любые другие ошибки => это ошибка (не пытаемся "маскировать" non-part)
 		if st, e := pulsarClient.GetPartitionedStats(ctx, h, ref); e == nil {
 			return "partitioned", st, nil
-		} else if isNotFoundErr(e) {
+		} else if utils.IsNotFoundErr(e) {
 			st2, e2 := pulsarClient.GetNonPartitionedStats(ctx, h, ref)
 			if e2 != nil {
 				return "", nil, e2
