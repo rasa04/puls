@@ -6,7 +6,7 @@ docker run --rm \
   -v "$PWD":/app \
   -w /app \
   golang:1.23 \
-  bash -c 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o puls -trimpath -ldflags "-s -w" ./cmd/puls'
+  bash -c 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o puls_linux -trimpath -ldflags "-s -w" .'
 ```
 
 To set up context:
